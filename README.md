@@ -10,6 +10,8 @@ We present a new image denoising algorithm called the adaptive double-phase ROF 
 
 2D_supplement_part2.pdf: The file presenting the results of numerical experiments in two dimensions (part 2).
 
+comparison.pdf: The file presenting the results of numerical experiments comparing the performance of the dpROF model to other image denoising models.
+
 1D_acceleration.py: The code comparing the results of accelerated and non-accelerated Chambolle-Pock algorithm for the tested models (in one dimension).
 
 1D_l2_distance_plots.py: The code for presenting the comparison between the tested models as a function of the L2 distance from the noisy datum (in one dimension).
@@ -33,6 +35,12 @@ We present a new image denoising algorithm called the adaptive double-phase ROF 
 2D_weight_plots.py: The code for presenting visually the results of the tested models in two dimensions and construction of the weight in the adaptive double-phase ROF model (with single parameter lambda).
 
 2D_metrics_image_version.py: The code for comparing the values of SSIM and PSNR in two dimensions for the tested models.
+
+comparison.py: The code for comparing the metrics SSIM, LPIPS and PSNR between dpROF and other image denoising models over a dataset.
+
+dpROF_optimisation.py: The code for optimising the dpROF parameters over a dataset.
+
+visual_comparison: The code for comparing visually dpROF and other image denoising models.
 
 cut1.jpg, cut2.png, cut3.jpg: one-dimensional images used in the supplements.
 
