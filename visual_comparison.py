@@ -87,7 +87,7 @@ def conversion_for_lpips(image):
 
 # Add proper directory path
 
-folder_path = '/clear_images'
+folder_path = '/clear_image'
 
 
 if not os.path.isdir(folder_path):
@@ -698,32 +698,6 @@ given_precision_huber = 1e-4
 
 
 
-
-# Initialisation of variables
-
-global_time_start = time.time()
-
-noise_technical_sum = 0
-
-ROF_time_sum = 0
-dpROF_time_sum = 0
-TGV_time_sum = 0
-CLR_time_sum = 0
-Huber_time_sum = 0
-ROF_small_time_sum = 0
-dpROF_small_time_sum = 0
-dpROF_b_small_time_sum = 0
-dpROF_noisy_time_sum = 0
-dpROF_edge_time_sum = 0
-dpROF_edge2_time_sum = 0
-nl_means_time_sum = 0
-
-
-
-
-
-iterations_number = 0
-
 # Starting the automated loop for images
 
 for i in range(number_of_images):
@@ -769,30 +743,26 @@ for i in range(number_of_images):
 
   # Step 1: Classical ROF model
 
-  start = time.time()
+
   denoised_v1v = chambolle_pock_v(noisy, tau=0.25, lam=lambda_ROF, max_iter=20000, tol=given_precision_ROF)
-  t1 = time.time() - start
-
-  ROF_time_sum += t1
-
+  
 
   # Step 2: dpROF
+
  
-  mollified_v1 = mollify_function(denoised_v1v, radius=2)
-  grad_v1 = gradient(mollified_v1)
+  denoised_v2va = chambolle_pock_v(noisy, tau=0.25, lam=lambda_initial_ROF_b, max_iter=20000, tol=given_precision_dpROF)
+  
+  mollified_v2va = mollify_function(denoised_v2va, radius=2)
+  grad_v1 = gradient(mollified_v2va)
   grad_norm = norm2(grad_v1)
 
-  a_const = a_dpROF
-  b_const = b_dpROF
+  a_const = a_dpROF_b
+  b_const = b_dpROF_b
 
   a_weight = np.maximum(0, a_const - b_const * np.maximum(grad_norm, a_const / (2 * b_const)))
 
-  start = time.time()
-  denoised_v2v = chambolle_pock_modified_v(noisy, a_weight, tau=0.25, lam=lambda_dpROF, max_iter=20000, tol=given_precision_dpROF)
-  t2 = time.time() - start
-
-  dpROF_time_sum += t2
-
+  denoised_v2v = chambolle_pock_modified_v(noisy, a_weight, tau=0.25, lam=lambda_dpROF_b, max_iter=20000, tol=given_precision_dpROF)
+  
 
   # Step 3: TGV
 
@@ -803,141 +773,33 @@ for i in range(number_of_images):
     max_iter=1200
   )
 
-  start = time.time()
   denoised_v3v = solver.solve(noisy)
-  t3 = time.time() - start
-
-  TGV_time_sum += t3
+  
 
   # Step 4: Apply the Chen-Levine-Rao algorithm
 
   noisy_clr = 255 * noisy
-
-  start = time.time()
   clr_denoised, q_map = clr_split_flow2(noisy_clr, tau=0.05, lam=0.3125, K=0.01, sigma=0.5, beta=30.0, max_iter=3000, tol=given_precision_clr, eps=1e-8)
-  t4 = time.time() - start
-
-  CLR_time_sum += t4
-
   denoised_v4v = img_as_float(clr_denoised/255)
   
 
   # Step 5: Apply the Huber-ROF
 
-  start = time.time()
   denoised_v5v = chambolle_pock_huber_accelerated(noisy, alpha = alpha_huber, tau = 0.25, lam=lambda_huber, max_iter=10000, tol=given_precision_huber)
-  t5 = time.time() - start
+  
 
-  Huber_time_sum += t5
+  # Step 6: The NL-means algorithm
 
-
-
-  # Step 6: The double-phase ROF model with reduced accuracy of the initial ROF calculation
-
-  start = time.time()
-  denoised_v6va = chambolle_pock_v(noisy, tau=0.25, lam=lambda_initial_ROF, max_iter=20000, tol=given_precision_ROF_for_dp)
-  t6a = time.time() - start
-
-  ROF_small_time_sum += t6a
-
-
-  # Step 2: Compute weight from gradient norm
-  mollified_v6va = mollify_function(denoised_v6va, radius=2)
-  grad_v1 = gradient(mollified_v6va)
-  grad_norm = norm2(grad_v1)
-
-  # Use weight 1
-
-  a_const = a_dpROF
-  b_const = b_dpROF
-
-  a_weight = np.maximum(0, a_const - b_const * np.maximum(grad_norm, a_const / (2 * b_const)))
-
-  start = time.time()
-  denoised_v6v = chambolle_pock_modified_v(noisy, a_weight, tau=0.25, lam=lambda_dpROF, max_iter=20000, tol=given_precision_dpROF)
-  t6 = time.time() - start
-
-  dpROF_small_time_sum += t6
-
-
-
-  # Step 8: The double-phase ROF model with lower b for reduction of staircasing
-
-  start = time.time()
-  denoised_v8va = chambolle_pock_v(noisy, tau=0.25, lam=lambda_initial_ROF_b, max_iter=20000, tol=given_precision_ROF_for_dp)
-  t8a = time.time() - start
-
-  ROF_small_time_sum += t8a
-
-
-  # Step 2: Compute weight from gradient norm
-  mollified_v8va = mollify_function(denoised_v8va, radius=2)
-  #mollified_v1 = mollify_function(noisy, radius=1)
-  grad_v1 = gradient(mollified_v8va)
-  #grad_v1 = gradient(denoised_v8va)
-  grad_norm = norm2(grad_v1)
-
-  # Use weight 1
-
-  a_const = a_dpROF_b
-  b_const = b_dpROF_b
-
-  a_weight = np.maximum(0, a_const - b_const * np.maximum(grad_norm, a_const / (2 * b_const)))
-
-  start = time.time()
-  denoised_v8v = chambolle_pock_modified_v(noisy, a_weight, tau=0.25, lam=lambda_dpROF_b, max_iter=20000, tol=given_precision_dpROF)
-  t8 = time.time() - start
-
-  dpROF_small_time_sum += t8
-
-  # Step 8: The double-phase ROF model with lower b for reduction of staircasing *and precise ROF*
-
-  start = time.time()
-  denoised_v9va = chambolle_pock_v(noisy, tau=0.25, lam=lambda_initial_ROF_b, max_iter=20000, tol=given_precision_dpROF)
-  t9a = time.time() - start
-
-  ROF_small_time_sum += t9a
-
-
-  # Step 2: Compute weight from gradient norm
-  mollified_v9va = mollify_function(denoised_v9va, radius=2)
-  grad_v1 = gradient(mollified_v9va)
-  grad_norm = norm2(grad_v1)
-
-  a_const = a_dpROF_b
-  b_const = b_dpROF_b
-
-  a_weight = np.maximum(0, a_const - b_const * np.maximum(grad_norm, a_const / (2 * b_const)))
-
-  start = time.time()
-  denoised_v9v = chambolle_pock_modified_v(noisy, a_weight, tau=0.25, lam=lambda_dpROF_b, max_iter=20000, tol=given_precision_dpROF)
-  t9 = time.time() - start
-
-  dpROF_small_time_sum += t9
-
-  # Step 10: The NL-means algorithm
-
-  start = time.time()
-  denoised_v10v = denoise_nl_means(noisy, patch_size = 3, patch_distance = 21, h = 0.6 * np.sqrt(given_variance), sigma =np.sqrt(given_variance), channel_axis = None, fast_mode = True)
-  t10 = time.time() - start
-
-  nl_means_time_sum += t10
-
-
-  start = time.time()
-  denoised_v11v = denoise_nl_means(noisy, patch_size = 3, patch_distance = 21, h = 0.6 * np.sqrt(given_variance), sigma =np.sqrt(given_variance), channel_axis = None, fast_mode = True)
-  t11 = time.time() - start
-
-  nl_means_time_sum += t11
-
+  denoised_v6v = denoise_nl_means(noisy, patch_size = 3, patch_distance = 21, h = 0.6 * np.sqrt(given_variance), sigma =np.sqrt(given_variance), channel_axis = None, fast_mode = True)
+  
 
   # Plots of denoised versions
 
 
-  images1 = [image, denoised_v1v, denoised_v9v, denoised_v5v]
+  images1 = [image, denoised_v1v, denoised_v2v, denoised_v5v]
   titles1 = ['Original', 'ROF', 'dpROF', 'Huber-ROF']
 
-  images2 = [noisy, denoised_v4v, denoised_v3v, denoised_v10v]
+  images2 = [noisy, denoised_v4v, denoised_v3v, denoised_v6v]
   titles2 = ['Noisy', 'CLR', 'TGV', 'NL-means']
 
   fig, axes = plt.subplots(2, 4, figsize=(12, 8))
@@ -954,41 +816,14 @@ for i in range(number_of_images):
 
   plt.tight_layout()
   plt.show()
-
-start = time.time()
-  denoised_v11v = denoise_nl_means(noisy, patch_size = 3, patch_distance = 21, h = 0.6 * np.sqrt(given_variance), sigma =np.sqrt(given_variance), channel_axis = None, fast_mode = True)
-  #denoised_v10v = denoise_nl_means(noisy, h = 0.65 * noise_level_estimate, channel_axis = None, fast_mode = True)
-  t11 = time.time() - start
-
-  nl_means_time_sum += t11
-
-images1 = [image, denoised_v1v, denoised_v9v, denoised_v5v]
-  titles1 = ['Original', 'ROF', 'dpROF', 'Huber-ROF']
-
-  images2 = [noisy, denoised_v4v, denoised_v3v, denoised_v11v]
-  titles2 = ['Noisy', 'CLR', 'TGV', 'NL-means']
-
-  fig, axes = plt.subplots(2, 4, figsize=(12, 8))
-
-  axes = axes.ravel()
-
-  images = images1 + images2
-  titles = titles1 + titles2
-
-  for ax, img, title in zip(axes, images, titles):
-    ax.imshow(img, cmap='gray')
-    ax.set_title(title)
-    ax.axis('off')
-
-  plt.tight_layout()
-  plt.show()
+  plt.savefig('/denoised_images.png') 
 
 print('ROF:', ssim(image, denoised_v1v, data_range=1.0))
-print('dpROF:', ssim(image, denoised_v9v, data_range=1.0))
+print('dpROF:', ssim(image, denoised_v2v, data_range=1.0))
 print('Huber-ROF:', ssim(image, denoised_v5v, data_range=1.0))
 print('CLR:', ssim(image, denoised_v4v, data_range=1.0))
 print('TGV:', ssim(image, denoised_v3v, data_range=1.0))
-print('NLM:', ssim(image, denoised_v11v, data_range=1.0))
+print('NLM:', ssim(image, denoised_v6v, data_range=1.0))
 
 def preprocess_image_for_lpips(img_np):
     # Convert numpy array to torch tensor
@@ -1004,15 +839,15 @@ def preprocess_image_for_lpips(img_np):
     return img_tensor
 
 print('ROF:', loss_fn(preprocess_image_for_lpips(image), preprocess_image_for_lpips(denoised_v1v)).item())
-print('dpROF:', loss_fn(preprocess_image_for_lpips(image), preprocess_image_for_lpips(denoised_v9v)).item())
+print('dpROF:', loss_fn(preprocess_image_for_lpips(image), preprocess_image_for_lpips(denoised_v2v)).item())
 print('Huber-ROF:', loss_fn(preprocess_image_for_lpips(image), preprocess_image_for_lpips(denoised_v5v)).item())
 print('CLR:', loss_fn(preprocess_image_for_lpips(image), preprocess_image_for_lpips(denoised_v4v)).item())
 print('TGV:', loss_fn(preprocess_image_for_lpips(image), preprocess_image_for_lpips(denoised_v3v)).item())
-print('NLM:', loss_fn(preprocess_image_for_lpips(image), preprocess_image_for_lpips(denoised_v11v)).item())
+print('NLM:', loss_fn(preprocess_image_for_lpips(image), preprocess_image_for_lpips(denoised_v6v)).item())
 
 denoised_images = [
-    denoised_v1v, denoised_v9v, denoised_v5v,
-    denoised_v4v, denoised_v3v, denoised_v11v
+    denoised_v1v, denoised_v2v, denoised_v5v,
+    denoised_v4v, denoised_v3v, denoised_v6v
 ]
 
 denoised_titles = [
@@ -1037,10 +872,11 @@ axes[-1].axis('off')
 
 plt.tight_layout()
 plt.show()
+plt.savefig('/difference_to_image.png') 
 
 denoised_images = [
-    denoised_v1v, denoised_v9v, denoised_v5v,
-    denoised_v4v, denoised_v3v, denoised_v11v
+    denoised_v1v, denoised_v2v, denoised_v5v,
+    denoised_v4v, denoised_v3v, denoised_v6v
 ]
 
 denoised_titles = [
@@ -1052,7 +888,7 @@ fig, axes = plt.subplots(2, 3, figsize=(12, 8))
 axes = axes.ravel()
 
 for ax, img, title in zip(axes, denoised_images, denoised_titles):
-    error_diff = np.abs(denoised_v9v- image) - np.abs(img - image)
+    error_diff = np.abs(denoised_v2v- image) - np.abs(img - image)
     #error_map = np.sqrt((img - image)**2)
     #error_map = (img - image)**2
 
@@ -1065,3 +901,4 @@ axes[-1].axis('off')
 
 plt.tight_layout()
 plt.show()
+plt.savefig('/difference_to_dpROF.png')
